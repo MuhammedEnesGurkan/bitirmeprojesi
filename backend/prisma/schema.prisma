@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  ANALYST
+  VIEWER
+}
+
+enum SourceType {
+  SHUFFLE
+  THEHIVE
+  WAZUH
+  MANUAL
+  MODEL
+  OTHER
+}
+
+enum SourceStatus {
+  ONLINE
+  OFFLINE
+  DEGRADED
+  UNKNOWN
+}
+
+enum Severity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum EventStatus {
+  NEW
+  ANALYZING
+  ANALYZED
+  FAILED
+  ARCHIVED
+}
+
+enum AnalysisStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  ARCHIVED
+}
+
+model User {
+  id        String     @id @default(uuid())
+  name      String
+  email     String     @unique
+  role      UserRole   @default(ANALYST)
+  createdAt DateTime   @default(now()) @map("created_at")
+  analyses  Analysis[]
+
+  @@map("users")
+}
+
+model Source {
+  id        String       @id @default(uuid())
+  name      String
+  type      SourceType
+  baseUrl   String?      @map("base_url")
+  status    SourceStatus @default(UNKNOWN)
+  createdAt DateTime     @default(now()) @map("created_at")
+  events    Event[]
+
+  @@unique([name, type])
+  @@map("sources")
+}
+
+model Event {
+  id         String      @id @default(uuid())
+  sourceId   String?     @map("source_id")
+  externalId String?     @map("external_id")
+  title      String
+  rawEvent   Json        @map("raw_event")
+  severity   Severity    @default(INFO)
+  status     EventStatus @default(NEW)
+  tags       String[]    @default([])
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+  source     Source?     @relation(fields: [sourceId], references: [id])
+  analyses   Analysis[]
+
+  @@index([severity])
+  @@index([status])
+  @@index([createdAt])
+  @@map("events")
+}
+
+model Analysis {
+  id                 String         @id @default(uuid())
+  eventId            String?        @map("event_id")
+  userId             String?        @map("user_id")
+  inputText          String         @map("input_text")
+  analysisSummary    String?        @map("analysis_summary")
+  rawAnalysis        String?        @map("raw_analysis")
+  riskLevel          Severity?      @map("risk_level")
+  attackType         String?        @map("attack_type")
+  mitreTactics       String[]       @default([]) @map("mitre_tactics")
+  mitreTechniques    String[]       @default([]) @map("mitre_techniques")
+  recommendedActions String[]       @default([]) @map("recommended_actions")
+  iocs               Json?
+  recommendationsJson Json?         @map("recommendations_json")
+  immediateActions   String[]       @default([]) @map("immediate_actions")
+  investigationSteps String[]       @default([]) @map("investigation_steps")
+  containmentSteps   String[]       @default([]) @map("containment_steps")
+  preventionSteps    String[]       @default([]) @map("prevention_steps")
+  analystNotes       String?        @map("analyst_notes")
+  modelEndpoint      String?        @map("model_endpoint")
+  latencyMs          Int?           @map("latency_ms")
+  status             AnalysisStatus @default(RUNNING)
+  errorMessage       String?        @map("error_message")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  event              Event?         @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  user               User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("analyses")
+}
+
+model Integration {
+  id         String     @id @default(uuid())
+  name       String
+  type       SourceType
+  configJson Json       @default("{}") @map("config_json")
+  enabled    Boolean    @default(true)
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  @@unique([name, type])
+  @@map("integrations")
+}
