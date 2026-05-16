@@ -9,6 +9,8 @@ import EventsPage from "./pages/EventsPage";
 import HistoryPage from "./pages/HistoryPage";
 import IntegrationsPage from "./pages/IntegrationsPage";
 import SettingsPage from "./pages/SettingsPage";
+import TheHiveCasesPage from "./pages/TheHiveCasesPage";
+import ToolsPage from "./pages/ToolsPage";
 import "./styles/index.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -21,6 +23,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="/events" element={<EventsPage />} />
           <Route path="/events/:id" element={<EventDetailPage />} />
           <Route path="/analyze" element={<AnalyzePage />} />
+          <Route path="/thehive/cases" element={<TheHiveCasesPage />} />
+          <Route path="/tools" element={<ToolsPage />} />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/integrations" element={<IntegrationsPage />} />
           <Route path="/settings" element={<SettingsPage />} />

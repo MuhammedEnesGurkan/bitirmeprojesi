@@ -2,7 +2,14 @@ import { AnalysisStatus } from "@prisma/client";
 import { HttpError } from "../lib/httpError.js";
 import { prisma } from "../lib/prisma.js";
 import { parseAnalysis } from "./analysisParser.js";
+import { runPostAnalysisAutomation } from "./automationService.js";
 import { getModelEndpoint } from "./settingsService.js";
+
+function buildModelUrl(endpoint: string) {
+  const normalized = endpoint.replace(/\/+$/, "");
+  if (/\/(?:analyze|ask)$/i.test(normalized)) return normalized;
+  return `${normalized}/analyze`;
+}
 
 export async function callModel(inputText: string) {
   const endpoint = await getModelEndpoint();
@@ -15,10 +22,10 @@ export async function callModel(inputText: string) {
   const timeout = setTimeout(() => controller.abort(), 60000);
 
   try {
-    const response = await fetch(`${endpoint}/analyze`, {
+    const response = await fetch(buildModelUrl(endpoint), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ event_data: inputText }),
+      headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+      body: JSON.stringify({ event_data: inputText, question: inputText }),
       signal: controller.signal
     });
 
@@ -29,8 +36,14 @@ export async function callModel(inputText: string) {
 
     let summary = body;
     try {
-      const json = JSON.parse(body) as { analysis_summary?: string };
-      summary = json.analysis_summary ?? body;
+      const json = JSON.parse(body) as {
+        analysis_summary?: string;
+        answer?: string;
+        response?: string;
+        result?: string;
+        message?: string;
+      };
+      summary = json.analysis_summary ?? json.answer ?? json.response ?? json.result ?? json.message ?? body;
     } catch {
       summary = body;
     }
@@ -53,7 +66,7 @@ export async function createCompletedAnalysis(params: {
   const result = await callModel(params.inputText);
   const parsed = result.parsed;
 
-  return prisma.analysis.create({
+  const analysis = await prisma.analysis.create({
     data: {
       eventId: params.eventId ?? null,
       userId: params.userId ?? null,
@@ -78,4 +91,7 @@ export async function createCompletedAnalysis(params: {
     },
     include: { event: { include: { source: true } }, user: true }
   });
+
+  await runPostAnalysisAutomation(analysis);
+  return analysis;
 }

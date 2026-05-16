@@ -79,3 +79,20 @@ export type Integration = {
   enabled: boolean;
   createdAt: string;
 };
+
+export type TheHiveCase = {
+  id: string;
+  number?: number | string;
+  title: string;
+  description?: string;
+  severity?: number;
+  severityLabel: Severity;
+  status?: string;
+  stage?: string;
+  assignee?: string;
+  owner?: string;
+  tags: string[];
+  createdAt?: string;
+  updatedAt?: string;
+  raw: unknown;
+};

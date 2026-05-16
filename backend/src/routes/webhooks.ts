@@ -6,6 +6,15 @@ import { createCompletedAnalysis } from "../services/modelService.js";
 
 export const webhooksRouter = Router();
 
+webhooksRouter.get("/shuffle", (_req, res) => {
+  res.json({
+    status: "ready",
+    method: "POST",
+    endpoint: "/webhooks/shuffle",
+    message: "Shuffle webhook is ready. Send JSON with POST."
+  });
+});
+
 webhooksRouter.post("/shuffle", async (req, res, next) => {
   try {
     const body = req.body ?? {};
@@ -43,6 +52,15 @@ webhooksRouter.post("/shuffle", async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+webhooksRouter.get("/thehive", (_req, res) => {
+  res.json({
+    status: "ready",
+    method: "POST",
+    endpoint: "/webhooks/thehive",
+    message: "TheHive webhook is ready. Send JSON with POST."
+  });
 });
 
 webhooksRouter.post("/thehive", async (req, res, next) => {

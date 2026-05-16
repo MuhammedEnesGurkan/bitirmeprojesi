@@ -65,6 +65,59 @@ Expected response:
 
 If the model returns structured JSON inside `analysis_summary`, the backend extracts fields such as risk level, MITRE mapping, IOCs, recommended actions, containment, investigation and prevention steps. If it returns plain text, the raw response is stored as `raw_analysis` and the UI still displays it in readable analysis and recommendations cards.
 
+## Post-Analysis Automation
+
+After an analysis is completed, the backend can trigger Shuffle and create a TheHive case based on the model risk level. By default, automation only runs for `MEDIUM`, `HIGH` and `CRITICAL` results.
+
+Configure `backend/.env`:
+
+```env
+AUTOMATION_ENABLED=true
+AUTOMATION_MIN_SEVERITY="MEDIUM"
+
+SHUFFLE_AUTOMATION_WEBHOOK_URL="http://100.77.24.25:3001/api/v1/hooks/YOUR_SHUFFLE_WEBHOOK"
+
+THEHIVE_API_URL="http://100.77.24.25:9000"
+THEHIVE_API_KEY="YOUR_THEHIVE_API_KEY"
+THEHIVE_CASE_ENDPOINT="/api/v1/case"
+THEHIVE_ASSIGNEE_CRITICAL="critical.responder"
+THEHIVE_ASSIGNEE_HIGH="tier2.analyst"
+THEHIVE_ASSIGNEE_MEDIUM="tier1.analyst"
+THEHIVE_ASSIGNEE_DEFAULT="soc.queue"
+```
+
+Manual setup needed:
+
+- In Shuffle, create a workflow with a Webhook trigger. Copy the full webhook URL into `SHUFFLE_AUTOMATION_WEBHOOK_URL`.
+- In TheHive, create or copy an API key for a user that can create cases. Put it in `THEHIVE_API_KEY`.
+- If your TheHive version uses the older case path, change `THEHIVE_CASE_ENDPOINT` to `/api/case`.
+- Restart the backend after changing `.env`.
+
+## Native TheHive Cases UI
+
+The app can render TheHive cases inside its own UI instead of embedding TheHive in an iframe.
+
+- Frontend page: `/thehive/cases`
+- Backend proxy: `/api/thehive/cases`
+- Required env values: `THEHIVE_API_URL` and `THEHIVE_API_KEY`
+
+The backend keeps the TheHive API key server-side and exposes a small case-management API to the frontend:
+
+```http
+GET    /api/thehive/cases
+POST   /api/thehive/cases
+GET    /api/thehive/cases/:id
+PATCH  /api/thehive/cases/:id
+```
+
+If case listing fails because your TheHive version uses a different search endpoint, set:
+
+```env
+THEHIVE_CASE_SEARCH_ENDPOINT="/api/case/_search"
+THEHIVE_AUTH_HEADER="Authorization"
+THEHIVE_AUTH_SCHEME="Bearer"
+```
+
 ## Main API Endpoints
 
 ```http
