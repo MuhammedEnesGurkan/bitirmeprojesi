@@ -34,6 +34,12 @@ type UpdatePayload = Partial<Pick<TheHiveCase, "title" | "description" | "status
   owner?: string;
 };
 
+type ClosePayload = {
+  summary?: string;
+  impactStatus?: string;
+  resolutionStatus?: string;
+};
+
 function envString(name: string) {
   return process.env[name]?.trim() || "";
 }
@@ -236,6 +242,28 @@ export async function updateTheHiveCase(id: string, payload: UpdatePayload) {
     () => requestTheHive(`${caseEndpoint()}/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(requestPayload) }),
     () => requestTheHive(`/api/case/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(requestPayload) }),
     () => requestTheHive(`/api/v1/case/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(requestPayload) })
+  ]);
+
+  return normalizeCase(body);
+}
+
+export async function closeTheHiveCase(id: string, payload: ClosePayload = {}) {
+  const now = Date.now();
+  const closePayload = {
+    status: "Resolved",
+    stage: "Closed",
+    endDate: now,
+    summary: payload.summary || "Closed from SOC AI Analysis Panel.",
+    impactStatus: payload.impactStatus || "NoImpact",
+    resolutionStatus: payload.resolutionStatus || "TruePositive"
+  };
+
+  const body = await tryRequests([
+    () => requestTheHive(`${caseEndpoint()}/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(closePayload) }),
+    () => requestTheHive(`/api/case/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(closePayload) }),
+    () => requestTheHive(`/api/v1/case/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(closePayload) }),
+    () => requestTheHive(`${caseEndpoint()}/${encodeURIComponent(id)}/close`, { method: "POST", body: JSON.stringify(closePayload) }),
+    () => requestTheHive(`/api/case/${encodeURIComponent(id)}/close`, { method: "POST", body: JSON.stringify(closePayload) })
   ]);
 
   return normalizeCase(body);

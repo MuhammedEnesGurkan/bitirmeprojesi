@@ -26,6 +26,17 @@ type AutomationPayload = {
   created_at: string;
 };
 
+type TheHiveCasePayload = {
+  title: string;
+  description: string;
+  severity: number;
+  tags: Array<string | null | undefined>;
+  assignee?: string;
+  owner?: string;
+  tlp: number;
+  pap: number;
+};
+
 const severityRank: Record<Severity, number> = {
   INFO: 0,
   LOW: 1,
@@ -63,6 +74,14 @@ function shouldAutomate(analysis: AnalysisWithEvent) {
   if (analysis.status !== AnalysisStatus.COMPLETED) return false;
   const severity = analysis.riskLevel ?? analysis.event?.severity ?? Severity.INFO;
   return severityRank[severity] >= severityRank[minSeverity()];
+}
+
+function directTheHiveCreationEnabled() {
+  if (process.env.THEHIVE_DIRECT_CASE_CREATION !== undefined) {
+    return envFlag("THEHIVE_DIRECT_CASE_CREATION", true);
+  }
+
+  return !envString("SHUFFLE_AUTOMATION_WEBHOOK_URL");
 }
 
 function titleFor(analysis: AnalysisWithEvent) {
@@ -121,14 +140,54 @@ function descriptionFor(payload: AutomationPayload) {
     payload.mitre_tactics.length ? `MITRE tactics: ${payload.mitre_tactics.join(", ")}` : "",
     payload.mitre_techniques.length ? `MITRE techniques: ${payload.mitre_techniques.join(", ")}` : "",
     "",
+    "Immediate actions:",
+    ...(payload.immediate_actions.length ? payload.immediate_actions.map((item) => `- ${item}`) : ["- No immediate action returned."]),
+    "",
     "Recommended actions:",
     ...(payload.recommended_actions.length ? payload.recommended_actions.map((item) => `- ${item}`) : ["- Review the alert context."]),
+    "",
+    "Containment steps:",
+    ...(payload.containment_steps.length ? payload.containment_steps.map((item) => `- ${item}`) : ["- No containment step returned."]),
+    "",
+    "Investigation steps:",
+    ...(payload.investigation_steps.length ? payload.investigation_steps.map((item) => `- ${item}`) : ["- No investigation step returned."]),
+    "",
+    "Prevention steps:",
+    ...(payload.prevention_steps.length ? payload.prevention_steps.map((item) => `- ${item}`) : ["- No prevention step returned."]),
+    "",
+    "IOCs:",
+    typeof payload.iocs === "object" && payload.iocs ? JSON.stringify(payload.iocs, null, 2) : "No IOC returned.",
     "",
     "Original input:",
     payload.input_text
   ];
 
   return lines.filter((line) => line !== "").join("\n");
+}
+
+function theHiveCasePayload(payload: AutomationPayload): TheHiveCasePayload {
+  const severity = payload.severity;
+  const assignee = assigneeFor(severity);
+
+  return {
+    title: `[${severity}] ${payload.title}`,
+    description: descriptionFor(payload),
+    severity: theHiveSeverity[severity],
+    tags: [
+      "soc-ai",
+      "ai-analysis",
+      "auto-created",
+      `analysis:${payload.analysis_id}`,
+      payload.source,
+      payload.attack_type,
+      ...payload.mitre_tactics,
+      ...payload.mitre_techniques
+    ].filter(Boolean),
+    assignee,
+    owner: assignee,
+    tlp: Number(process.env.THEHIVE_DEFAULT_TLP ?? 2),
+    pap: Number(process.env.THEHIVE_DEFAULT_PAP ?? 2)
+  };
 }
 
 async function postJson(url: string, body: unknown, headers: Record<string, string> = {}) {
@@ -163,35 +222,20 @@ async function triggerShuffle(payload: AutomationPayload) {
 
   await postJson(url, {
     ...payload,
-    automation_action: "triage_from_ai_analysis"
+    automation_action: "triage_from_ai_analysis",
+    thehive_case: theHiveCasePayload(payload)
   });
 }
 
 async function createTheHiveCase(payload: AutomationPayload) {
+  if (!directTheHiveCreationEnabled()) return;
+
   const baseUrl = envString("THEHIVE_API_URL").replace(/\/+$/, "");
   const apiKey = envString("THEHIVE_API_KEY");
   if (!baseUrl || !apiKey) return;
 
   const endpoint = envString("THEHIVE_CASE_ENDPOINT") || "/api/v1/case";
-  const severity = payload.severity;
-  const assignee = assigneeFor(severity);
-  const casePayload = {
-    title: `[${severity}] ${payload.title}`,
-    description: descriptionFor(payload),
-    severity: theHiveSeverity[severity],
-    tags: [
-      "soc-ai",
-      "auto-created",
-      payload.source,
-      payload.attack_type,
-      ...payload.mitre_tactics,
-      ...payload.mitre_techniques
-    ].filter(Boolean),
-    assignee,
-    owner: assignee,
-    tlp: Number(process.env.THEHIVE_DEFAULT_TLP ?? 2),
-    pap: Number(process.env.THEHIVE_DEFAULT_PAP ?? 2)
-  };
+  const casePayload = theHiveCasePayload(payload);
 
   const headers = theHiveHeaders(apiKey);
   const endpoints = Array.from(new Set([endpoint, "/api/case", "/api/v1/case"]));

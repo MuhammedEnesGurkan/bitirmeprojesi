@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { createTheHiveCase, getTheHiveCase, listTheHiveCases, updateTheHiveCase } from "../services/theHiveService.js";
+import { closeTheHiveCase, createTheHiveCase, getTheHiveCase, listTheHiveCases, updateTheHiveCase } from "../services/theHiveService.js";
 
 export const theHiveRouter = Router();
 
@@ -22,6 +22,12 @@ const updateSchema = z.object({
   stage: z.string().optional(),
   assignee: z.string().optional(),
   tags: z.array(z.string()).optional()
+});
+
+const closeSchema = z.object({
+  summary: z.string().optional(),
+  impactStatus: z.string().optional(),
+  resolutionStatus: z.string().optional()
 });
 
 theHiveRouter.get("/cases", async (req, res, next) => {
@@ -53,6 +59,15 @@ theHiveRouter.patch("/cases/:id", async (req, res, next) => {
   try {
     const payload = updateSchema.parse(req.body);
     res.json(await updateTheHiveCase(req.params.id, payload));
+  } catch (error) {
+    next(error);
+  }
+});
+
+theHiveRouter.post("/cases/:id/close", async (req, res, next) => {
+  try {
+    const payload = closeSchema.parse(req.body ?? {});
+    res.json(await closeTheHiveCase(req.params.id, payload));
   } catch (error) {
     next(error);
   }

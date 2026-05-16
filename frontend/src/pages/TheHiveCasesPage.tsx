@@ -1,4 +1,4 @@
-import { Briefcase, Plus, RefreshCw, Save, Search } from "lucide-react";
+import { Briefcase, CheckCircle2, Plus, RefreshCw, Save, Search } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Badge from "../components/Badge";
 import PageHeader from "../components/PageHeader";
@@ -32,6 +32,7 @@ export default function TheHiveCasesPage() {
   const [search, setSearch] = useState("");
   const [newCase, setNewCase] = useState({ title: "", description: "", severity: 2, assignee: "", tags: "soc-ai" });
   const [edit, setEdit] = useState({ assignee: "", status: "", stage: "", severity: 2, tags: "" });
+  const [closeForm, setCloseForm] = useState({ summary: "Closed from SOC AI Analysis Panel.", impactStatus: "NoImpact", resolutionStatus: "TruePositive" });
 
   const selected = useMemo(() => cases.find((item) => item.id === selectedId) ?? cases[0], [cases, selectedId]);
 
@@ -104,6 +105,20 @@ export default function TheHiveCasesPage() {
       setCases((current) => current.map((item) => item.id === selected.id ? updated : item));
     } catch (err) {
       setError(err instanceof Error ? err.message : "TheHive case could not be updated");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function closeSelected() {
+    if (!selected) return;
+    setSaving(true);
+    setError("");
+    try {
+      const closed = await api.post<TheHiveCase>(`/api/thehive/cases/${encodeURIComponent(selected.id)}/close`, closeForm);
+      setCases((current) => current.map((item) => item.id === selected.id ? closed : item));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "TheHive case could not be closed");
     } finally {
       setSaving(false);
     }
@@ -227,6 +242,41 @@ export default function TheHiveCasesPage() {
             <button onClick={saveSelected} disabled={saving} className="mt-4 inline-flex h-10 items-center gap-2 rounded-lg bg-cyan px-4 text-sm font-semibold text-ink disabled:opacity-60">
               <Save className="h-4 w-4" /> Save Changes
             </button>
+
+            <div className="mt-5 rounded-lg border border-line bg-black/20 p-4">
+              <div className="mb-3 text-sm font-semibold text-white">Close Case</div>
+              <textarea
+                value={closeForm.summary}
+                onChange={(event) => setCloseForm({ ...closeForm, summary: event.target.value })}
+                className="field min-h-20 px-3 py-2 text-sm"
+                placeholder="Closure summary"
+              />
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <select
+                  value={closeForm.impactStatus}
+                  onChange={(event) => setCloseForm({ ...closeForm, impactStatus: event.target.value })}
+                  className="field h-10 px-3 text-sm"
+                >
+                  <option value="NoImpact">NoImpact</option>
+                  <option value="WithImpact">WithImpact</option>
+                  <option value="NotApplicable">NotApplicable</option>
+                </select>
+                <select
+                  value={closeForm.resolutionStatus}
+                  onChange={(event) => setCloseForm({ ...closeForm, resolutionStatus: event.target.value })}
+                  className="field h-10 px-3 text-sm"
+                >
+                  <option value="TruePositive">TruePositive</option>
+                  <option value="FalsePositive">FalsePositive</option>
+                  <option value="Indeterminate">Indeterminate</option>
+                  <option value="Duplicate">Duplicate</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <button onClick={closeSelected} disabled={saving} className="mt-3 inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-400/40 bg-emerald-500/15 px-4 text-sm font-semibold text-emerald-100 disabled:opacity-60">
+                <CheckCircle2 className="h-4 w-4" /> Close Case
+              </button>
+            </div>
 
             <div className="mt-6 border-t border-line pt-5">
               <div className="mb-2 text-sm font-semibold text-white">Description</div>
