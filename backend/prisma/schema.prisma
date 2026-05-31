@@ -109,6 +109,7 @@ model Analysis {
   mitreTechniques    String[]       @default([]) @map("mitre_techniques")
   recommendedActions String[]       @default([]) @map("recommended_actions")
   iocs               Json?
+  triageJson         Json?          @map("triage_json")
   recommendationsJson Json?         @map("recommendations_json")
   immediateActions   String[]       @default([]) @map("immediate_actions")
   investigationSteps String[]       @default([]) @map("investigation_steps")

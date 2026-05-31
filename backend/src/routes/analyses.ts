@@ -81,7 +81,8 @@ analysesRouter.post("/manual", async (req, res, next) => {
       const analysis = await createCompletedAnalysis({
         eventId: event.id,
         userId: payload.user_id ?? null,
-        inputText: payload.event_data
+        inputText: payload.event_data,
+        sourceSeverity: event.severity
       });
       await prisma.event.update({ where: { id: event.id }, data: { status: EventStatus.ANALYZED } });
       res.status(201).json(analysis);
@@ -112,7 +113,8 @@ analysesRouter.post("/:id/reanalyze", async (req, res, next) => {
     const analysis = await createCompletedAnalysis({
       eventId: original.eventId,
       userId: req.body?.user_id ?? original.userId,
-      inputText: req.body?.input_text ? String(req.body.input_text) : original.inputText
+      inputText: req.body?.input_text ? String(req.body.input_text) : original.inputText,
+      sourceSeverity: original.riskLevel ?? undefined
     });
 
     if (analysis.eventId) {

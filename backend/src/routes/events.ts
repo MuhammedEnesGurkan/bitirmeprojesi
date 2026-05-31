@@ -116,7 +116,8 @@ eventsRouter.post("/:id/analyze", async (req, res, next) => {
       const analysis = await createCompletedAnalysis({
         eventId: event.id,
         userId: req.body?.user_id ?? null,
-        inputText
+        inputText,
+        sourceSeverity: event.severity
       });
       await prisma.event.update({ where: { id: event.id }, data: { status: EventStatus.ANALYZED } });
       res.status(201).json(analysis);

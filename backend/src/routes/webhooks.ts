@@ -44,7 +44,7 @@ webhooksRouter.post("/shuffle", async (req, res, next) => {
 
     let analysis = null;
     if (body.auto_analyze || req.query.autoAnalyze === "true") {
-      analysis = await createCompletedAnalysis({ eventId: event.id, inputText: eventToText(body) });
+      analysis = await createCompletedAnalysis({ eventId: event.id, inputText: eventToText(body), sourceSeverity: event.severity });
       await prisma.event.update({ where: { id: event.id }, data: { status: EventStatus.ANALYZED } });
     }
 
@@ -97,7 +97,7 @@ webhooksRouter.post("/thehive", async (req, res, next) => {
 
     let analysis = null;
     if (body.auto_analyze || req.query.autoAnalyze === "true") {
-      analysis = await createCompletedAnalysis({ eventId: event.id, inputText: eventToText(event.rawEvent) });
+      analysis = await createCompletedAnalysis({ eventId: event.id, inputText: eventToText(event.rawEvent), sourceSeverity: event.severity });
       await prisma.event.update({ where: { id: event.id }, data: { status: EventStatus.ANALYZED } });
     }
 

@@ -5,7 +5,6 @@ import {
   DatabaseZap,
   History,
   LayoutDashboard,
-  MonitorUp,
   RadioTower,
   Settings,
   ShieldAlert
@@ -17,7 +16,6 @@ const nav = [
   { href: "/events", label: "Events", icon: ShieldAlert },
   { href: "/analyze", label: "AI Analyze", icon: BrainCircuit },
   { href: "/thehive/cases", label: "TheHive Cases", icon: Briefcase },
-  { href: "/tools", label: "SOC Tools", icon: MonitorUp },
   { href: "/history", label: "History", icon: History },
   { href: "/integrations", label: "Integrations", icon: RadioTower },
   { href: "/settings", label: "Settings", icon: Settings }

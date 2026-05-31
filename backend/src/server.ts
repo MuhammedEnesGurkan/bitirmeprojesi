@@ -4,6 +4,7 @@ import express from "express";
 import { analysesRouter } from "./routes/analyses.js";
 import { dashboardRouter } from "./routes/dashboard.js";
 import { eventsRouter } from "./routes/events.js";
+import { enrichmentRouter } from "./routes/enrichment.js";
 import { healthRouter } from "./routes/health.js";
 import { integrationsRouter } from "./routes/integrations.js";
 import { settingsRouter } from "./routes/settings.js";
@@ -39,6 +40,7 @@ app.get("/", (_req, res) => {
 });
 
 app.use("/api/dashboard", dashboardRouter);
+app.use("/api/enrichment", enrichmentRouter);
 app.use("/api/events", eventsRouter);
 app.use("/api/analyses", analysesRouter);
 app.use("/api/integrations", integrationsRouter);

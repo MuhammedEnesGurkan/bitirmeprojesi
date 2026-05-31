@@ -17,6 +17,14 @@ export type TheHiveCase = {
   raw: unknown;
 };
 
+export type TheHiveComment = {
+  id: string;
+  message: string;
+  author?: string;
+  createdAt?: string;
+  raw: unknown;
+};
+
 type CasePayload = {
   title: string;
   description?: string;
@@ -40,6 +48,10 @@ type ClosePayload = {
   resolutionStatus?: string;
 };
 
+type CommentPayload = {
+  message: string;
+};
+
 function envString(name: string) {
   return process.env[name]?.trim() || "";
 }
@@ -60,7 +72,7 @@ function caseEndpoint() {
   return envString("THEHIVE_CASE_ENDPOINT") || "/api/v1/case";
 }
 
-function authHeaders() {
+function authHeaders(includeOrganisation = true) {
   const header = envString("THEHIVE_AUTH_HEADER") || "Authorization";
   const scheme = envString("THEHIVE_AUTH_SCHEME") || "Bearer";
   const value = scheme ? `${scheme} ${apiKey()}` : apiKey();
@@ -70,7 +82,7 @@ function authHeaders() {
     [header]: value
   };
 
-  if (organisation) {
+  if (includeOrganisation && organisation) {
     headers["X-Organisation"] = organisation;
   }
 
@@ -120,10 +132,40 @@ function normalizeCase(value: unknown): TheHiveCase {
 }
 
 function normalizeCaseList(value: unknown) {
-  if (Array.isArray(value)) return value.map(normalizeCase).filter((item) => item.id);
+  const sortByNewest = (items: TheHiveCase[]) => items.sort((a, b) => {
+    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return bTime - aTime;
+  });
+
+  if (Array.isArray(value)) return sortByNewest(value.map(normalizeCase).filter((item) => item.id));
   const record = asRecord(value);
-  for (const key of ["data", "items", "cases", "results"]) {
-    if (Array.isArray(record[key])) return record[key].map(normalizeCase).filter((item) => item.id);
+  for (const key of ["data", "items", "cases", "results", "entities"]) {
+    if (Array.isArray(record[key])) return sortByNewest(record[key].map(normalizeCase).filter((item) => item.id));
+  }
+  return [];
+}
+
+function normalizeComment(value: unknown): TheHiveComment {
+  const item = asRecord(value);
+  const id = String(item._id ?? item.id ?? item.commentId ?? item.createdAt ?? item.created_at ?? "");
+  const message = String(item.message ?? item.text ?? item.content ?? item.description ?? "");
+  const user = asRecord(item.user);
+
+  return {
+    id,
+    message,
+    author: typeof item.createdBy === "string" ? item.createdBy : typeof item.author === "string" ? item.author : typeof user.name === "string" ? user.name : undefined,
+    createdAt: toIso(item.createdAt ?? item.created_at),
+    raw: value
+  };
+}
+
+function normalizeCommentList(value: unknown) {
+  if (Array.isArray(value)) return value.map(normalizeComment).filter((item) => item.id || item.message);
+  const record = asRecord(value);
+  for (const key of ["data", "items", "comments", "results"]) {
+    if (Array.isArray(record[key])) return record[key].map(normalizeComment).filter((item) => item.id || item.message);
   }
   return [];
 }
@@ -133,11 +175,51 @@ async function requestTheHive(path: string, init: RequestInit = {}) {
   const timeout = setTimeout(() => controller.abort(), Number(process.env.THEHIVE_TIMEOUT_MS ?? 15000));
 
   try {
+    const makeRequest = async (includeOrganisation = true) => {
+      const response = await fetch(`${baseUrl()}${path}`, {
+        ...init,
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(includeOrganisation),
+          ...(init.headers ?? {})
+        },
+        signal: controller.signal
+      });
+
+      return { response, text: await response.text() };
+    };
+
+    let { response, text } = await makeRequest();
+    if (!response.ok && authHeaders()["X-Organisation"] && /Organisation not found/i.test(text)) {
+      ({ response, text } = await makeRequest(false));
+    }
+
+    const body = text ? JSON.parse(text) as unknown : null;
+    if (!response.ok) {
+      throw new HttpError(response.status, text || `TheHive request failed with ${response.status}`);
+    }
+
+    return body;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new HttpError(502, "TheHive returned invalid JSON");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function requestTheHiveWithoutOrganisation(path: string, init: RequestInit = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number(process.env.THEHIVE_TIMEOUT_MS ?? 15000));
+
+  try {
     const response = await fetch(`${baseUrl()}${path}`, {
       ...init,
       headers: {
         "Content-Type": "application/json",
-        ...authHeaders(),
+        ...authHeaders(false),
         ...(init.headers ?? {})
       },
       signal: controller.signal
@@ -175,35 +257,62 @@ async function tryRequests<T>(requests: Array<() => Promise<T>>) {
   throw new HttpError(502, "TheHive request failed");
 }
 
+async function tryCaseListRequests(requests: Array<() => Promise<unknown>>) {
+  const errors: unknown[] = [];
+  let sawEmptyResponse = false;
+
+  for (const request of requests) {
+    try {
+      const cases = normalizeCaseList(await request());
+      if (cases.length > 0) return cases;
+      sawEmptyResponse = true;
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  if (sawEmptyResponse) return [];
+
+  const last = errors.at(-1);
+  if (last instanceof Error) throw last;
+  throw new HttpError(502, "TheHive case list failed");
+}
+
 export async function listTheHiveCases(search = "") {
   const query = search.trim();
-  const allCases = () => requestTheHive(`${caseEndpoint()}?range=all`);
-  const searchBody = {
-    query: query
-      ? { _name: "listCase", extraData: ["observableStats"], query: { _string: query } }
-      : { _name: "listCase", extraData: ["observableStats"] },
+  const searchEndpointBody = {
+    query: query ? { _string: query } : {},
     range: "all",
     sort: ["-createdAt"]
   };
+  const queryBody = {
+    query: [{ _name: "listCase" }],
+    range: "0-100",
+    sort: ["-createdAt"]
+  };
 
-  const body = await tryRequests([
-    allCases,
-    () => requestTheHive("/api/case?range=all"),
+  const cases = await tryCaseListRequests([
+    () => requestTheHiveWithoutOrganisation(`${caseEndpoint()}?range=all`),
+    () => requestTheHiveWithoutOrganisation("/api/case?range=all"),
+    () => requestTheHiveWithoutOrganisation("/api/v1/query", {
+      method: "POST",
+      body: JSON.stringify(queryBody)
+    }),
+    () => requestTheHiveWithoutOrganisation(envString("THEHIVE_CASE_SEARCH_ENDPOINT") || "/api/case/_search", {
+      method: "POST",
+      body: JSON.stringify(searchEndpointBody)
+    }),
+    () => requestTheHive(`${caseEndpoint()}?range=all`),
     () => requestTheHive("/api/v1/query", {
       method: "POST",
-      body: JSON.stringify({
-        query: [{ _name: "listCase" }],
-        range: "0-100",
-        sort: ["-createdAt"]
-      })
+      body: JSON.stringify(queryBody)
     }),
     () => requestTheHive(envString("THEHIVE_CASE_SEARCH_ENDPOINT") || "/api/case/_search", {
       method: "POST",
-      body: JSON.stringify(searchBody)
+      body: JSON.stringify(searchEndpointBody)
     })
   ]);
 
-  const cases = normalizeCaseList(body);
   if (!query) return cases;
 
   const needle = query.toLowerCase();
@@ -217,6 +326,9 @@ export async function listTheHiveCases(search = "") {
 
 export async function getTheHiveCase(id: string) {
   const body = await tryRequests([
+    () => requestTheHiveWithoutOrganisation(`${caseEndpoint()}/${encodeURIComponent(id)}`),
+    () => requestTheHiveWithoutOrganisation(`/api/case/${encodeURIComponent(id)}`),
+    () => requestTheHiveWithoutOrganisation(`/api/v1/case/${encodeURIComponent(id)}`),
     () => requestTheHive(`${caseEndpoint()}/${encodeURIComponent(id)}`),
     () => requestTheHive(`/api/case/${encodeURIComponent(id)}`),
     () => requestTheHive(`/api/v1/case/${encodeURIComponent(id)}`)
@@ -267,4 +379,51 @@ export async function closeTheHiveCase(id: string, payload: ClosePayload = {}) {
   ]);
 
   return normalizeCase(body);
+}
+
+function commentCreatePaths(id: string) {
+  const encoded = encodeURIComponent(id);
+  return [
+    `${caseEndpoint()}/${encoded}/comment`,
+    `/api/case/${encoded}/comment`,
+    `/api/v1/case/${encoded}/comment`
+  ];
+}
+
+function commentListPaths(id: string) {
+  const encoded = encodeURIComponent(id);
+  return [
+    `${caseEndpoint()}/${encoded}/comments`,
+    `/api/case/${encoded}/comments`,
+    `/api/v1/case/${encoded}/comments`
+  ];
+}
+
+export async function listTheHiveCaseComments(id: string) {
+  try {
+    const body = await tryRequests([
+      ...commentListPaths(id).map((path) => () => requestTheHiveWithoutOrganisation(path)),
+      ...commentListPaths(id).map((path) => () => requestTheHive(path))
+    ]);
+    return normalizeCommentList(body);
+  } catch (error) {
+    if (error instanceof HttpError && error.statusCode === 404) return [];
+    throw error;
+  }
+}
+
+export async function addTheHiveCaseComment(id: string, payload: CommentPayload) {
+  const requestPayload = { message: payload.message };
+  const body = await tryRequests([
+    ...commentCreatePaths(id).map((path) => () => requestTheHiveWithoutOrganisation(path, {
+      method: "POST",
+      body: JSON.stringify(requestPayload)
+    })),
+    ...commentCreatePaths(id).map((path) => () => requestTheHive(path, {
+      method: "POST",
+      body: JSON.stringify(requestPayload)
+    }))
+  ]);
+
+  return normalizeComment(body);
 }

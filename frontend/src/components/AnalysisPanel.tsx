@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock3, Crosshair, FileText, ShieldCheck } from "lucide-react";
+import { Bot, CheckCircle2, Clock3, Crosshair, FileText, ShieldCheck } from "lucide-react";
 import { api } from "../lib/api";
 import { severityClass, statusClass } from "../lib/format";
 import type { Analysis, RecommendationItem } from "../types/api";
@@ -40,6 +40,18 @@ function fallbackRecommendations(analysis: Analysis): RecommendationItem[] {
   return rows;
 }
 
+const triageVerdictLabel: Record<string, string> = {
+  possible_true_positive: "Possible TP",
+  possible_false_positive: "Possible FP",
+  needs_review: "Needs Review"
+};
+
+const triageVerdictClass: Record<string, string> = {
+  possible_true_positive: "border-orange-400/40 bg-orange-500/15 text-orange-100",
+  possible_false_positive: "border-emerald-400/40 bg-emerald-500/15 text-emerald-100",
+  needs_review: "border-amber-400/40 bg-amber-500/15 text-amber-100"
+};
+
 export default function AnalysisPanel({
   analysis,
   onChange
@@ -49,6 +61,7 @@ export default function AnalysisPanel({
 }) {
   const recommendations = analysis.recommendationsJson?.length ? analysis.recommendationsJson : fallbackRecommendations(analysis);
   const grouped = groupRecommendations(recommendations);
+  const triage = analysis.triageJson;
 
   async function toggle(item: RecommendationItem) {
     const updated = await api.patch<Analysis>(`/api/analyses/${analysis.id}/recommendations/${item.id}`, { done: !item.done });
@@ -63,6 +76,36 @@ export default function AnalysisPanel({
           {analysis.riskLevel && <Badge className={severityClass[analysis.riskLevel]}>{analysis.riskLevel}</Badge>}
           {analysis.latencyMs && <Badge className="border-cyan/30 bg-cyan/10 text-cyan">{analysis.latencyMs} ms</Badge>}
         </div>
+        {triage && (
+          <div className="mb-4 rounded-lg border border-line bg-black/20 p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="mr-auto flex items-center gap-2 text-sm font-semibold text-white">
+                <Bot className="h-4 w-4 text-cyan" />
+                Rule-based Pre-triage
+              </div>
+              <Badge className={triageVerdictClass[triage.verdict] ?? triageVerdictClass.needs_review}>
+                {triageVerdictLabel[triage.verdict] ?? "Needs Review"}
+              </Badge>
+              <Badge className={severityClass[triage.riskLevel]}>{triage.riskLevel}</Badge>
+              <Badge className={triage.llmSkipped ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-100" : "border-cyan/30 bg-cyan/10 text-cyan"}>
+                {triage.llmSkipped ? "LLM Skipped" : "LLM Used"}
+              </Badge>
+            </div>
+            <div className="mt-3 flex items-center gap-3">
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
+                <div className="h-full rounded-full bg-cyan" style={{ width: `${Math.round(triage.confidence * 100)}%` }} />
+              </div>
+              <div className="w-14 text-right text-xs font-semibold text-slate-300">{Math.round(triage.confidence * 100)}%</div>
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {triage.reasons.slice(0, 4).map((reason) => (
+                <div key={reason} className="rounded-md border border-line bg-black/15 px-3 py-2 text-xs leading-5 text-slate-300">
+                  {reason}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="grid gap-4 md:grid-cols-3">
           <div className="md:col-span-2">
             <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-white">

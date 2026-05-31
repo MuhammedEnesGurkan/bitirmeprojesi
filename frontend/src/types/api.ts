@@ -35,6 +35,22 @@ export type RecommendationItem = {
   done: boolean;
 };
 
+export type TriageVerdict = "possible_true_positive" | "possible_false_positive" | "needs_review";
+
+export type TriageDecision = {
+  verdict: TriageVerdict;
+  confidence: number;
+  riskLevel: Severity;
+  needsLlm: boolean;
+  llmSkipped?: boolean;
+  reasons: string[];
+  signals?: {
+    truePositive?: string[];
+    falsePositive?: string[];
+    indicators?: Record<string, string[]>;
+  };
+};
+
 export type Analysis = {
   id: string;
   eventId?: string | null;
@@ -47,6 +63,7 @@ export type Analysis = {
   mitreTechniques: string[];
   recommendedActions: string[];
   iocs?: Record<string, string[]> | null;
+  triageJson?: TriageDecision | null;
   recommendationsJson?: RecommendationItem[] | null;
   immediateActions: string[];
   investigationSteps: string[];
@@ -95,4 +112,55 @@ export type TheHiveCase = {
   createdAt?: string;
   updatedAt?: string;
   raw: unknown;
+};
+
+export type TheHiveComment = {
+  id: string;
+  message: string;
+  author?: string;
+  createdAt?: string;
+  raw: unknown;
+};
+
+export type AilaCaseAnalysisResult = {
+  case: TheHiveCase;
+  comment: TheHiveComment;
+  analysis: {
+    summary: string;
+    riskLevel?: Severity | null;
+    attackType?: string | null;
+    recommendedActions: string[];
+    immediateActions: string[];
+    investigationSteps: string[];
+    containmentSteps: string[];
+    preventionSteps: string[];
+    mitreTactics: string[];
+    mitreTechniques: string[];
+    iocs?: Record<string, string[]> | null;
+    modelEndpoint: string;
+    latencyMs: number;
+  };
+};
+
+export type IocType = "ip" | "domain" | "url" | "hash" | "email";
+export type EnrichmentVerdict = "malicious" | "suspicious" | "clean" | "unknown";
+
+export type Indicator = {
+  value: string;
+  type: IocType;
+};
+
+export type EnrichmentSource = {
+  name: string;
+  status: "ok" | "skipped" | "error";
+  verdict: EnrichmentVerdict;
+  score: number;
+  summary: string;
+};
+
+export type EnrichedIndicator = Indicator & {
+  verdict: EnrichmentVerdict;
+  score: number;
+  priority: "critical" | "high" | "medium" | "low";
+  sources: EnrichmentSource[];
 };
